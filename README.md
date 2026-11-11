@@ -1,10 +1,10 @@
-# Market Emotion Radar v0.4 — CAC 40 + Nasdaq 100
+# Market Emotion Radar v0.5 — CAC 40 + Nasdaq 100
 
 Application Streamlit de suivi expérimental des changements de domination acheteurs/vendeurs à partir de bougies de 5 minutes.
 
 ## Marchés
 
-- **CAC 40** : proxy **ETF C40.PA** coté à Paris, en EUR, session régulière 09:00–17:30 Europe/Paris. Le symbole est à vérifier auprès de Yahoo Finance : l'ETF peut être indisponible ou peu liquide. Le cours et le volume de l'ETF ne sont **pas** ceux de l'indice CAC 40 `^FCHI`.
+- **CAC 40** : indice **^FCHI** coté à Paris, en EUR, session régulière 09:00–17:30 Europe/Paris. Le volume de l’indice peut être absent : l’application utilise la somme des volumes des actions disponibles, avec un seuil minimum de couverture. Ce proxy n’est pas le volume de l’indice. Sans couverture suffisante, les prix restent affichés mais aucun MER ni signal exploitable n’est produit.
 - **Nasdaq 100** : proxy **QQQ**, en USD, session régulière 09:30–16:00 America/New_York.
 
 Sélectionne le marché dans la barre latérale. Le mode « Yahoo + échantillon » essaie de charger un ensemble de titres, puis se replie sur le proxy de prix si les données sont insuffisantes. Les listes sont indicatives, non exhaustives, et ne garantissent pas la composition historique exacte des indices.
@@ -47,3 +47,7 @@ Un signal est connu **à la clôture** d'une bougie de 5 minutes. L'étude évé
 - Le breadth de l'échantillon est non pondéré et ne représente pas tous les titres.
 - Les marchés ont des horaires et jours fériés distincts ; les clôtures exceptionnelles ne sont pas intégrées.
 - Ceci est un outil d'observation expérimental, pas un ordre ni un conseil financier.
+
+
+## v0.5 — données CAC
+Le cours est obtenu via `^FCHI` (bougies 5 minutes). Le volume est une somme des volumes d’actions de l’échantillon, susceptible de varier avec la couverture; les signaux sont expérimentaux et ne sont pas validés. Yahoo peut fournir des données retardées.

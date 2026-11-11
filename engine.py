@@ -21,7 +21,7 @@ def compute(price: pd.DataFrame, constituents: pd.DataFrame | None = None,
         raise ValueError('Index horodaté avec fuseau horaire requis.')
     if q.index.has_duplicates:
         raise ValueError('Horodatages dupliqués.')
-    if (q['volume'] < 0).any() or (q['close'] <= 0).any():
+    if (q['volume'].dropna() < 0).any() or (q['close'] <= 0).any():
         raise ValueError('Prix ou volumes invalides.')
     q = q.tz_convert(market.timezone).between_time(market.start, market.end)
     chunks = []
@@ -45,9 +45,9 @@ def compute(price: pd.DataFrame, constituents: pd.DataFrame | None = None,
             d['breadth_source'] = 'échantillon de constituants'
         else:
             d['breadth'] = normalize(ret15/(vol5*np.sqrt(3)),1.8)
-            d['breadth_source'] = 'proxy ETF (non indépendant)'
+            d['breadth_source'] = 'proxy prix (non indépendant)'
         features = d[list(WEIGHTS)]
-        d['MER'] = (50+50*sum(features[k]*w for k,w in WEIGHTS.items())).where(features.notna().all(axis=1))
+        d['MER'] = (50+50*sum(features[k]*w for k,w in WEIGHTS.items())).where(features.notna().all(axis=1) & d.volume.gt(0))
         d['velocity_15m'] = d.MER-d.MER.shift(3)
         d['acceleration_15m'] = d.velocity_15m-d.velocity_15m.shift(3)
         prev = d.MER.shift(1)

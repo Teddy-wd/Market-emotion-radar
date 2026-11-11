@@ -1,7 +1,7 @@
 """Market-specific sessions and instrument configuration.
 
-CAC 40 is tracked using a listed CAC-40 ETF (C40.PA), not the cash index.
-An ETF provides traded volume needed by the detector; its tracking is imperfect.
+CAC 40 price uses ^FCHI. Constituent stock volumes are an imperfect
+participation proxy; never interpret them as index volume.
 """
 from dataclasses import dataclass
 
@@ -25,7 +25,7 @@ NASDAQ = Market(
      'TXN','ISRG','BKNG','MU','PANW','ADP','LRCX','KLAC','CRWD'))
 
 CAC = Market(
-    'cac', 'CAC 40 (ETF C40.PA)', 'C40.PA', 'Europe/Paris',
+    'cac', 'CAC 40 (^FCHI)', '^FCHI', 'Europe/Paris',
     '09:05', '17:30', '€',
     ('AI.PA','AIR.PA','ALO.PA','ACA.PA','BNP.PA','CAP.PA','CA.PA','CS.PA',
      'DSY.PA','EDEN.PA','ENGI.PA','EL.PA','ERF.PA','RMS.PA','KER.PA',

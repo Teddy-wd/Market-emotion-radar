@@ -3,19 +3,19 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 from markets import MARKETS
-from live_data import fetch_price, fetch_leaders
+from live_data import fetch_price, fetch_constituents
 from engine import compute
 from dominance import detect, event_study, ShiftConfig
 
 st.set_page_config(page_title='Market Emotion Radar | CAC 40 & Nasdaq 100',page_icon='📡',layout='wide')
 st.title('📡 Market Emotion Radar — CAC 40 & Nasdaq 100')
-st.caption('MER v0.4 · Dominance Shift Detector · Données Yahoo non garanties temps réel · Signaux expérimentaux')
+st.caption('MER v0.5 · Dominance Shift Detector · Données Yahoo non garanties temps réel · Signaux expérimentaux')
 
 @st.cache_data(ttl=240,show_spinner=False)
 def cached_price(key,days):return fetch_price(MARKETS[key],days)
 
 @st.cache_data(ttl=300,show_spinner=False)
-def cached_leaders(key,days):return fetch_leaders(MARKETS[key],days)
+def cached_leaders(key,days):return fetch_constituents(MARKETS[key],days)
 
 market_name=st.sidebar.radio('Marché',list(MARKETS),index=0)
 market=MARKETS[market_name]
@@ -26,12 +26,14 @@ if st.sidebar.button('🔄 Forcer le rafraîchissement'):
     cached_price.clear();cached_leaders.clear();st.rerun()
 threshold=st.sidebar.slider('Variation MER sur 10 min',6,20,8)
 cost_bps=st.sidebar.slider('Coût aller-retour simulé (bps)',0.0,20.0,3.0,0.5)
-st.sidebar.info('Le CAC est représenté par un ETF coté (C40.PA), pas directement par l’indice ^FCHI. Les cours Yahoo peuvent être différés. Vérifier la disponibilité et le volume.')
+st.sidebar.info('CAC : prix ^FCHI. Volumes agrégés des actions disponibles (proxy, pas volume de l’indice). Yahoo peut être différé.')
 
 @st.fragment(run_every='300s' if auto else None)
 def dashboard():
     try:
         constituents=None
+        volume_source='volume de l’instrument'
+        proxy_volume_available=True
         if source=='Importer CSV':
             price_file=st.file_uploader(f'{market.symbol} : timestamp,open,high,low,close,volume',type='csv',key=f'price_{market.key}')
             constituents_file=st.file_uploader('Constituants (facultatif) : timestamp + prix par titre',type='csv',key=f'leaders_{market.key}')
@@ -46,12 +48,22 @@ def dashboard():
         else:
             with st.spinner(f'Chargement de {market.name}…'):
                 price=cached_price(market_name,days)
-                if source=='Yahoo + échantillon de valeurs':
-                    try:constituents=cached_leaders(market_name,days)
-                    except Exception as exc:st.warning(f'Constituants indisponibles : {exc}. Repli sur un proxy de breadth non indépendant.')
+                if market.key=='cac' or source=='Yahoo + échantillon de valeurs':
+                    try:
+                        constituents, stock_volume = cached_leaders(market_name,days)
+                        if market.key=='cac':
+                            price['volume'] = stock_volume.reindex(price.index)
+                            volume_source='volumes agrégés des actions CAC (proxy)'
+                    except Exception as exc:
+                        if market.key=='cac':
+                            price['volume']=float('nan')
+                            proxy_volume_available=False
+                            st.warning(f'Volumes des actions CAC indisponibles ({exc}). Graphique du CAC affiché sans signaux MER.')
+                        else:
+                            st.warning(f'Constituants indisponibles : {exc}. Repli sur un proxy de breadth non indépendant.')
         if price.empty:raise ValueError('Aucune bougie de marché disponible.')
-        if (price.volume<=0).all():
-            st.error('Aucun volume exploitable pour cet instrument : le MER ne peut pas être calculé de façon fiable.');return
+        if price.volume.fillna(0).le(0).all():
+            st.warning('Aucun volume exploitable : les prix restent visibles, mais le MER et les alertes sont désactivés.')
         result=detect(compute(price,constituents,market),ShiftConfig(threshold=float(threshold)),timezone=market.timezone)
         if result.empty:raise ValueError('Aucune bougie en séance régulière.')
         dates=sorted(set(result.index.tz_convert(market.timezone).date))
@@ -60,8 +72,9 @@ def dashboard():
         selected=result[result.index.tz_convert(market.timezone).date==selected_date]
         valid=selected.dropna(subset=['MER'])
         if valid.empty:
-            st.warning('Pas assez de bougies pour calculer le MER. Attends le début de la séance et la période de stabilisation.');return
-        last=valid.iloc[-1];stamp=valid.index[-1]
+            st.warning('MER indisponible : données de volume insuffisantes ou phase de stabilisation. Le cours reste visible.')
+        last=selected.iloc[-1]
+        stamp=selected.index[-1]
         now=pd.Timestamp.now(tz=market.timezone)
         age=(now-stamp).total_seconds()/60
         if selected_date!=today:
@@ -72,16 +85,16 @@ def dashboard():
             st.info(f'Breadth calculé sur {constituents.shape[1]} titres disponibles (échantillon non pondéré, pas tous les constituants).')
         else:
             st.info('Breadth approximé à partir de l’instrument seul : ce n’est pas une confirmation indépendante.')
-        st.caption(f'Instrument : **{market.symbol}** · Séance : {market.start}–{market.end} ({market.timezone}) · Dernière bougie : {stamp.strftime("%d/%m/%Y %H:%M %Z")}')
+        st.caption(f'Instrument : **{market.symbol}** · Source volume : {volume_source} · Séance : {market.start}–{market.end} ({market.timezone}) · Dernière bougie : {stamp.strftime("%d/%m/%Y %H:%M %Z")}')
         cols=st.columns(4)
-        cols[0].metric('MER · 0–100',f'{last.MER:.1f}')
+        cols[0].metric('MER · 0–100',f'{last.MER:.1f}' if pd.notna(last.MER) else '—')
         cols[1].metric('Vitesse · 15 min',f'{last.velocity_15m:+.1f}' if pd.notna(last.velocity_15m) else '—')
         cols[2].metric('Dominance',last.shift_state)
         cols[3].metric(market.symbol,f'{last.close:.2f} {market.currency}')
         if pd.notna(last.delta_10m) and pd.notna(last.rvol):
             st.caption(f'ΔMER 10 min : {last.delta_10m:+.1f} · Breadth : {last.breadth:+.2f} · Volume relatif : {last.rvol:.2f}×')
         is_fresh=(selected_date==today and 0<=age<=15)
-        if last.shift_signal in ('LONG','SHORT') and is_fresh:
+        if pd.notna(last.MER) and last.shift_signal in ('LONG','SHORT') and is_fresh:
             st.warning(f'⚡ Basculement {last.shift_signal} à la clôture de la dernière bougie. Signal expérimental, non exécutable rétroactivement.')
         elif last.shift_signal in ('LONG','SHORT'):
             st.info(f'Dernier signal historique : {last.shift_signal}. Il ne s’agit PAS d’une alerte actuelle.')
@@ -117,4 +130,4 @@ def dashboard():
 
 dashboard()
 st.divider()
-st.caption('Données Yahoo non garanties temps réel. Un ETF ne reproduit pas exactement l’indice et ses volumes diffèrent. Le MER est un indicateur heuristique, pas une mesure directe de la peur ou de l’avidité. Signaux expérimentaux : pas de conseil de trading.')
+st.caption('Données Yahoo non garanties temps réel. Pour le CAC, ^FCHI donne le prix de l’indice et le volume provient d’un échantillon d’actions, non de l’indice. Le MER est un indicateur heuristique, pas une mesure directe de la peur ou de l’avidité. Signaux expérimentaux : pas de conseil de trading.')
