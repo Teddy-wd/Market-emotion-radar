@@ -1,4 +1,4 @@
-# Market Emotion Radar — Nasdaq 100 (v0.2)
+# Market Emotion Radar — Nasdaq 100 (v0.3)
 
 Streamlit dashboard with automatic 5-minute refresh, Yahoo Finance QQQ intraday bars, optional breadth from an **unweighted sample of up to 29 Nasdaq-100-related large-cap stocks**, and CSV input. The score is a heuristic price/volume pressure index, not measured investor emotion or a validated prediction.
 
